@@ -11,10 +11,11 @@
 #include "jfid.h"
 #include "jellyfin.h"
 #include "plex.h"
+#include "cineplex.h"
 
 // Rows a Home can receive from all servers together.
-#define SRV_FIL_MAX (JF_FIL_MAX + JF_FIL_MAX + PX_FIL_MAX)
-#define SRV_ITENS_MAX (2 * JF_ITENS_MAX + PX_FIL_MAX * JF_POR_FILEIRA)
+#define SRV_FIL_MAX (JF_FIL_MAX + JF_FIL_MAX + PX_FIL_MAX + CX_FIL_MAX)
+#define SRV_ITENS_MAX (2 * JF_ITENS_MAX + PX_FIL_MAX * JF_POR_FILEIRA + CX_ITENS_MAX)
 
 void servidores_carregar(void);          // active profile's connections
 void servidores_perfil_trocou(void);     // cancels in-flight work, reloads

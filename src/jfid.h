@@ -29,13 +29,14 @@ static inline int jfid_hex(char c) {
 // and the same parser serve every personal server.
 #define JFID_PREFIXO_EMBY "em:"
 #define JFID_PREFIXO_PLEX "px:"
+#define JFID_PREFIXO_CX "cx:"   // Cineplex (cineplex.c)
 
 // 1 for any id in a personal-server namespace, even malformed: callers use
 // this as a privacy gate ("never send to Trakt"), so prefix alone decides.
 static inline int jfid_e(const char *id) {
   if (!id || !id[0] || !id[1] || id[2] != ':') return 0;
   return (id[0] == 'j' && id[1] == 'f') || (id[0] == 'e' && id[1] == 'm') ||
-         (id[0] == 'p' && id[1] == 'x');
+         (id[0] == 'p' && id[1] == 'x') || (id[0] == 'c' && id[1] == 'x');
 }
 
 // Lowercase hex without dashes, at most `max` digits. 1 if valid and not empty.

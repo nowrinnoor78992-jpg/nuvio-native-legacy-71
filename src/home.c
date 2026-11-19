@@ -1,3 +1,4 @@
+#include "cineplex.h"
 #include "imdbnota.h"
 // Home nativa compatível com a interface moderna do Nuvio 1.0.1 legacy:
 // hero no topo, rail fixa à esquerda e fileiras horizontais de posters. A
@@ -3172,7 +3173,7 @@ static void sincronizarFileiras(void) {
     for (r = destaqueIndice + 1;
          r < destino && d->n < DESTAQUE_OPCOES; r++) {
       Fileira *fonte = &fileiras[r];
-      if (!fonte->base[0] || !fonte->catId[0]) continue;
+      if (!fonte->base[0] || !fonte->catId[0] || cineplex_chave_fileira(fonte->chave)) continue;
       for (c = 0; c < fonte->n && d->n < DESTAQUE_OPCOES; c++) {
         int idx = fileiraItemIndice(fonte, c);
         int repetido = 0, k;
@@ -3473,7 +3474,7 @@ static void sincronizarFileiras(void) {
     // seguir, deixando passar quem nao pede rede.
     { int q2, rede = 0, mantidas = 0, naFila = 0, fora = 0, alem = 0;
       for (q2 = 0; q2 < w; q2++) {
-        int pedeRede = arranjo[q2].base[0] && arranjo[q2].catId[0];
+        int pedeRede = arranjo[q2].base[0] && arranjo[q2].catId[0] && !cineplex_chave_fileira(arranjo[q2].chave);
         // FILA NAO DESENHA. Editor e Home usam a mesma cota de catalogos;
         // colecoes e fixas ficam fora dela. Catalogo na fila ou fora nao
         // entra; abre vaga sozinho quando o estado muda na remontagem.

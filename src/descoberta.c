@@ -35,6 +35,7 @@
 #include "idbase.h"
 #include "cwfrente.h"
 #include "servidores.h"
+#include "cineplex.h"
 #include "descdebounce.h"
 #include "nlanc.h"
 #include <stdint.h>   /* uintptr_t: a geracao viaja no argumento do fio */
@@ -961,6 +962,14 @@ void desc_alvos_busca_zerar(void) {
       snprintf(a->addon, sizeof a->addon, "%s", "Nuvio");
       a->nuvio = 1;
     } }
+  // Cineplex: the server's own library, searched through its search_ajax.php (cineplex.c).
+  { AlvoBusca *a = &alvos[nAlvos++];
+    snprintf(a->base,  sizeof a->base,  "%s", "cineplex:");
+    snprintf(a->tipo,  sizeof a->tipo,  "%s", "series");
+    snprintf(a->id,    sizeof a->id,    "%s", "search");
+    snprintf(a->titulo,sizeof a->titulo,"%s", "Cineplex");
+    snprintf(a->addon, sizeof a->addon, "%s", "Cineplex");
+    a->nuvio = 0; }
   memset(resAlvo, 0, sizeof resAlvo);
   // ESQUECE O TERMO JA PEDIDO. Sem isto, depois que a lista de addons muda (um
   // addon novo, o ciclo de sync) os resultados eram apagados aqui mas
@@ -1005,6 +1014,7 @@ static int consultarAlvo(const AlvoBusca *a, const char *termo,
   char *corpo;
   const char *p;
   int n = 0;
+  if (!strcmp(a->base, "cineplex:")) return cineplex_buscar(termo, saida, max);   // personal server, not an addon
   // 6 s por alvo, como o web (SEARCH_CATALOG_TIMEOUT 6500). Addon lento nao
   // trava a tela: a fileira dele so aparece quando chegar, e as outras ja
   // estao la. O alvo do Nuvio tem 5 s e, se falhar, o Cinemeta mais 6.
@@ -2793,7 +2803,7 @@ typedef struct {
 static int homeVistosReserva(void) {
   int reserva = trakt_ativo() ? 2 * TRAKT_LISTA_MAX : 0;
   if (ajustes_salvos_no_simkl() && simkl_ativo()) reserva += 300;
-  if (ajustes_jellyfin_ligado() && servidores_conectado()) reserva += SRV_ITENS_MAX;
+  if ((ajustes_jellyfin_ligado() || cineplex_ligado()) && servidores_conectado()) reserva += SRV_ITENS_MAX;
   return reserva;
 }
 static int homeVistosLimitar(int got, int usados, int restantes, int reserva) {
@@ -5398,7 +5408,7 @@ static void *montar(void *u) {
   // network here; the module fetched them on its own worker. Fixed rows
   // (empty base) so they never take an addon row's place in the limit, placed
   // right after the leading fixed rows (Continue watching, social).
-  if (ajustes_jellyfin_ligado() && servidores_conectado()) {
+  if ((ajustes_jellyfin_ligado() || cineplex_ligado()) && servidores_conectado()) {
     int cabe = SRV_ITENS_MAX, jn = 0, jnf, k, pos = 0;
     CatItem *jfItens = malloc(sizeof(CatItem) * (size_t)cabe);
     CatFileira jfFils[SRV_FIL_MAX];
@@ -9432,6 +9442,31 @@ static void *fioVerTudo(void *u) {
   pthread_mutex_unlock(&vtTrava);
   if (!descSessaoVincular(sessao)) {
     pthread_mutex_lock(&vtTrava); vtFioVivo = 0; pthread_mutex_unlock(&vtTrava); return NULL;
+  }
+
+  // CINEPLEX (cineplex.c): "Ver tudo" of a Cineplex row. vtPagina is the page number - 1.
+  if (!strcmp(base, "cineplex:")) {
+    CatItem *lote = malloc(sizeof *lote * 96);
+    int nl = 0, fimLista = 0, seguirCx = 0;
+    if (!lote) { pthread_mutex_lock(&vtTrava); vtErro = 1; vtFioVivo = 0; pthread_mutex_unlock(&vtTrava); return NULL; }
+    nl = cineplex_pagina(id, skip + 1, lote, 96, &fimLista);
+    pthread_mutex_lock(&vtTrava);
+    if (generation != vtGeracao || !descSessaoAtual()) { pthread_mutex_unlock(&vtTrava); free(lote); continue; }
+    { int added = 0, i, j, teto = colecaoTeto(id);
+      for (i = 0; i < nl && vtN < teto; i++) {
+        int dup = 0;
+        for (j = 0; j < vtN; j++) if (!strcmp(vtItens[j].imdb, lote[i].imdb)) { dup = 1; break; }
+        if (!dup) { vtItens[vtN++] = lote[i]; added++; }
+      }
+      vtErro = nl < 0;
+      if (nl >= 0) { vtPagina = skip + 1; if (fimLista || vtN >= teto) vtFim = 1; }
+      else vtFim = 1;
+      seguirCx = vtPaginaSoDeVistos(antes, added, paginas);
+      if (!seguirCx) vtFioVivo = 0; }
+    pthread_mutex_unlock(&vtTrava);
+    free(lote);
+    if (seguirCx) continue;
+    return NULL;
   }
 
   // FONTE NAO-ADDON (issue #44): pasta de colecao do site cujo conteudo vem
