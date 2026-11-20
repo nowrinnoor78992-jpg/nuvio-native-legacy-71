@@ -296,10 +296,12 @@ static void decodificar_nome(const char *in, size_t n, char *out, size_t tam) {
   out[k] = 0;
 }
 
-#define CX_CATS_MAX 48
-static char catEnc[CX_CATS_MAX][96];   // category names exactly as the site links them (url-encoded)
-static int catPag[CX_CATS_MAX];        // number of pages of each category (0 = unknown)
-static int nCatsReg;
+#define CX_CATS_MAX 64
+
+// Categories shown first on the Home (the rest follow in the order the site lists them).
+static const char *const CAT_PRIORIDADE[] = {
+  "Bangla+Tv+Series", "Bangla+Drama", "Indian+Bangla", "Indian+Bangla+Drama", "Bangla+Series",
+  "Hindi+Series", "English+Series", "Pakistani+Series", "Korean+Series", "Web+Series", "Animation+Series", NULL };
 
 // "Page 2 of 17" -> 17 (0 when absent)
 static int total_paginas(const char *html) {
@@ -324,12 +326,12 @@ static void *carregarFio(void *u) {
   unsigned g = (unsigned)(uintptr_t)u;
   char *html = NULL, caminho[160];
   char (*cats)[96] = malloc(sizeof(char[96]) * CX_CATS_MAX);
-  int *pags = calloc(CX_CATS_MAX, sizeof(int));
-  int nCats = 0, nf = 0, ni = 0, k;
+  int nCats = 0, nf = 0, ni = 0, k, q;
+  int *ordem = malloc(sizeof(int) * CX_CATS_MAX), nOrdem = 0;
   CatItem *itens = malloc(sizeof(CatItem) * CX_ITENS_MAX);
   CatFileira fils[CX_FIL_MAX];
   Cartao *cartoes = malloc(sizeof(Cartao) * CX_POR_FIL);
-  if (!itens || !cartoes || !cats || !pags) goto fim;
+  if (!itens || !cartoes || !cats || !ordem) goto fim;
   memset(fils, 0, sizeof fils);
   if (pegar("/tvs.php", &html, NULL)) {
     const char *p = html, *fimH = html + strlen(html);
@@ -356,23 +358,30 @@ static void *carregarFio(void *u) {
     }
     free(html); html = NULL;
   }
-  // page 1 of EVERY category: fills the first rows and tells how many pages each one has
+  // order: the preferred categories that exist first, then every other one the site lists
+  for (q = 0; CAT_PRIORIDADE[q]; q++)
+    for (k = 0; k < nCats; k++) if (!strcmp(cats[k], CAT_PRIORIDADE[q])) { ordem[nOrdem++] = k; break; }
   for (k = 0; k < nCats; k++) {
+    int ja = 0;
+    for (q = 0; q < nOrdem; q++) if (ordem[q] == k) ja = 1;
+    if (!ja) ordem[nOrdem++] = k;
+  }
+  for (q = 0; q < nOrdem && nf < CX_FIL_MAX; q++) {
     int n, j, stop;
     char nome[96];
+    k = ordem[q];
     pthread_mutex_lock(&trava);
     stop = (g != geracao);
     pthread_mutex_unlock(&trava);
     if (stop) goto fim;
     snprintf(caminho, sizeof caminho, "/tcategory.php?category=%s&page=1", cats[k]);
     if (!pegar(caminho, &html, NULL)) continue;
-    pags[k] = total_paginas(html);
     n = ler_cartoes(html, cartoes, CX_POR_FIL);
     free(html); html = NULL;
-    if (n <= 0 || nf >= CX_FIL_MAX || ni + n > CX_ITENS_MAX) continue;
+    if (n <= 0 || ni + n > CX_ITENS_MAX) continue;
     for (j = 0; j < n; j++) item_de(&cartoes[j], &itens[ni + j]);
     decodificar_nome(cats[k], strlen(cats[k]), nome, sizeof nome);
-    snprintf(fils[nf].chave, sizeof fils[nf].chave, "cx_series_%d", k);
+    snprintf(fils[nf].chave, sizeof fils[nf].chave, "cx_series_c:%s", cats[k]);
     snprintf(fils[nf].titulo, sizeof fils[nf].titulo, "Cineplex · %s", nome);
     copiar(fils[nf].tipo, sizeof fils[nf].tipo, "series");
     copiar(fils[nf].base, sizeof fils[nf].base, "cineplex:");
@@ -387,8 +396,6 @@ static void *carregarFio(void *u) {
       memcpy(snapItens, itens, sizeof(CatItem) * (size_t)ni);
       memcpy(snapFils, fils, sizeof(CatFileira) * (size_t)nf);
       nSnapFils = nf;
-      nCatsReg = nCats;
-      for (k = 0; k < nCats; k++) { copiar(catEnc[k], sizeof catEnc[k], cats[k]); catPag[k] = pags[k]; }
       snapVersao++;
       carregado = 1;
       snapGeracao = g;
@@ -404,7 +411,7 @@ fim:
   pthread_mutex_lock(&trava);
   carregando = 0;
   pthread_mutex_unlock(&trava);
-  free(html); free(itens); free(cartoes); free(cats); free(pags);
+  free(html); free(itens); free(cartoes); free(cats); free(ordem);
   return NULL;
 }
 static void iniciarCarga(void) {
@@ -471,7 +478,7 @@ typedef struct {
   int temps[CX_TEMPS_MAX], nTemps, selecionada;
 } Pagina;
 
-typedef struct { int ep; char thumb[300]; } EpLido;
+typedef struct { int ep; char thumb[300]; char nome[120]; } EpLido;
 
 static void caminho_watch(char *dst, size_t tam, unsigned long id, int temp, int ep, int auto_) {
   snprintf(dst, tam, "/watch.php?id=%lu&series_id=%lu&season=%d&ep=%d%s", id, id, temp, ep, auto_ ? "&autoplay=1" : "");
@@ -492,6 +499,13 @@ static int ler_episodios(const char *html, EpLido *out, int max) {
       tmp[0] = 0;
       if (!atributo(p, a1, "data-src=\"", tmp, sizeof tmp) || !tmp[0]) atributo(p, a1, " src=\"", tmp, sizeof tmp);
       absoluta(tmp, out[n].thumb, sizeof out[n].thumb);
+      out[n].nome[0] = 0;
+      {   // the card's title: <span class="truncate text-sm font-semibold">Lalkuthi - Episode 01</span>
+        const char *t = buscar(p, a1, "class=\"truncate");
+        const char *gt = t ? memchr(t, '>', (size_t)(a1 - t)) : NULL;
+        const char *e2 = gt ? buscar(gt, a1, "</span>") : NULL;
+        if (gt && e2) texto(gt + 1, e2, out[n].nome, sizeof out[n].nome);
+      }
       n++;
     }
     p = a1;
@@ -593,7 +607,8 @@ int cineplex_ficha(CatItem *item, CatEp *eps, int maxEps) {
       memset(e, 0, sizeof *e);
       e->temporada = t;
       e->episodio = lidos[k].ep;
-      snprintf(e->nome, sizeof e->nome, "Episode %d", lidos[k].ep);
+      if (lidos[k].nome[0]) copiar(e->nome, sizeof e->nome, lidos[k].nome);
+      else snprintf(e->nome, sizeof e->nome, "Episode %d", lidos[k].ep);
       copiar(e->thumb, sizeof e->thumb, lidos[k].thumb);
       cineplex_id_episodio(e->vid, sizeof e->vid, serie, t, lidos[k].ep);
       ne++;
@@ -624,6 +639,11 @@ static void *fontesFio(void *u) {
     if (temp == 0 && ep == 0) { temp = 1; ep = 1; }
     caminho_watch(caminho, sizeof caminho, serie, temp, ep, 1);
     if (pegar(caminho, &html, NULL)) {
+      {   // the server also hands out the video cookies on the meta call (as the working scraper does)
+        char meta[260], *m = NULL;
+        snprintf(meta, sizeof meta, "%s&meta=1", caminho);
+        if (pegar(meta, &m, NULL)) free(m);
+      }
       const char *fim = html + strlen(html), *q;
       char tmp[400] = "";
       if ((q = buscar(html, fim, "<source"))) {
@@ -715,47 +735,8 @@ int cineplex_fontes_colher(const char *alvo, Stream **lista, int *n) {
 }
 
 
-// ------------------------------------------------------------ see all
-int cineplex_pagina(const char *catId, int pagina, CatItem *saida, int max, int *fim) {
-  char caminho[220], *html = NULL;
-  char enc[96] = "";
-  int pg = pagina < 1 ? 1 : pagina, total = 0, n = 0, i, ultima = 0;
-  Cartao *c;
-  if (fim) *fim = 0;
-  if (!catId || !saida || max <= 0) return -1;
-  if (!strncmp(catId, "c:", 2)) {
-    copiar(enc, sizeof enc, catId + 2);
-    pthread_mutex_lock(&trava);
-    for (i = 0; i < nCatsReg; i++) if (!strcmp(catEnc[i], enc)) { total = catPag[i]; break; }
-    pthread_mutex_unlock(&trava);
-  } else if (!strcmp(catId, "all")) {
-    int g = pg;
-    pthread_mutex_lock(&trava);
-    for (i = 0; i < nCatsReg; i++) {
-      int pk = catPag[i] > 0 ? catPag[i] : 1;
-      if (g <= pk) { copiar(enc, sizeof enc, catEnc[i]); total = pk; pg = g; ultima = (i == nCatsReg - 1); break; }
-      g -= pk;
-    }
-    pthread_mutex_unlock(&trava);
-    if (!enc[0]) { *fim = 1; return 0; }      // walked past the last category
-  } else return -1;
-  snprintf(caminho, sizeof caminho, "/tcategory.php?category=%s&page=%d", enc, pg);
-  if (!pegar(caminho, &html, NULL)) return -1;
-  c = malloc(sizeof(Cartao) * 96);
-  if (!c) { free(html); return -1; }
-  if (total <= 0) total = total_paginas(html);
-  n = ler_cartoes(html, c, max < 96 ? max : 96);
-  for (i = 0; i < n; i++) { item_de(&c[i], &saida[i]); copiar(saida[i].origem, sizeof saida[i].origem, "Cineplex"); }
-  if (fim) {
-    if (!strcmp(catId, "all")) *fim = ultima && pg >= total;
-    else *fim = (total > 0 && pg >= total) || n == 0;
-  }
-  free(c); free(html);
-  return n;
-}
-
-// ------------------------------------------------------------- search
-// Minimal JSON reading for the flat objects search_ajax.php returns.
+// ------------------------------------------------------------- JSON
+// Minimal JSON reading for the flat objects the site returns (search_ajax.php, tvs_more.php).
 static const char *json_fim_valor(const char *p, const char *fim) {   // p at '{' or '['
   int prof = 0, str = 0;
   for (; p < fim; p++) {
@@ -812,54 +793,101 @@ static int json_valor(const char *o, const char *fim, const char *chave, char *d
     }
   }
   dst[k] = 0;
+  entidades(dst);
   return k > 0;
 }
-
-int cineplex_buscar(const char *termo, CatItem *saida, int max) {
-  char caminho[400], esc[300], *json = NULL;
-  const char *p, *fim, *arr;
-  size_t k = 0;
+// Objects of the array that starts right after `arr` ('[' already skipped). Titles of a series only
+// when `soSeries` (search results also hold movies; tvs_more.php holds series only).
+static int ler_lista_json(const char *arr, Cartao *out, int max, int soSeries) {
+  const char *fim = arr + strlen(arr), *p = arr;
   int n = 0, i;
-  if (!termo || !*termo || !saida || max <= 0) return 0;
-  for (const unsigned char *c = (const unsigned char *)termo; *c && k + 4 < sizeof esc; c++) {
-    if (isalnum(*c) || *c == '-' || *c == '_' || *c == '.') esc[k++] = (char)*c;
-    else if (*c == ' ') esc[k++] = '+';
-    else k += (size_t)snprintf(esc + k, 4, "%%%02X", *c);
-  }
-  esc[k] = 0;
-  snprintf(caminho, sizeof caminho, "/search_ajax.php?q=%s&limit=30", esc);
-  if (!pegar(caminho, &json, NULL)) return 0;
-  fim = json + strlen(json);
-  arr = buscar(json, fim, "\"results\"");
-  arr = arr ? memchr(arr, '[', (size_t)(fim - arr)) : NULL;
-  for (p = arr ? arr + 1 : NULL; p && p < fim && n < max;) {
-    const char *o = memchr(p, '{', (size_t)(fim - p)), *f;
+  while (p && p < fim && n < max) {
+    const char *o = memchr(p, '{', (size_t)(fim - p)), *f, *fe;
     Cartao c;
-    char id[24], url[200], tipo[40], poster[300], ano[16];
+    char id[24], url[200], tipo[40], poster[300], ano[16], nota[16];
     if (!o) break;
+    if ((fe = memchr(p, ']', (size_t)(o - p))) != NULL) break;      // array ended before the next object
     f = json_fim_valor(o, fim);
     if (!f) break;
     memset(&c, 0, sizeof c);
     url[0] = tipo[0] = 0;
     json_valor(o, f, "url", url, sizeof url);
     json_valor(o, f, "type", tipo, sizeof tipo);
-    if ((strstr(url, "tview.php") || buscar(tipo, tipo + strlen(tipo), "eries") != NULL) &&
+    if ((!soSeries || strstr(url, "tview.php") || buscar(tipo, tipo + strlen(tipo), "eries") != NULL) &&
         json_valor(o, f, "id", id, sizeof id) && json_valor(o, f, "title", c.titulo, sizeof c.titulo)) {
       c.id = strtoul(id, NULL, 10);
-      poster[0] = ano[0] = 0;
+      poster[0] = ano[0] = nota[0] = 0;
       json_valor(o, f, "poster", poster, sizeof poster);
       json_valor(o, f, "year", ano, sizeof ano);
       json_valor(o, f, "category", c.cat, sizeof c.cat);
+      json_valor(o, f, "imdb_rating", nota, sizeof nota);
       absoluta(poster, c.poster, sizeof c.poster);
       if (strlen(ano) >= 4 && isdigit((unsigned char)ano[0])) snprintf(c.ano, sizeof c.ano, "%.4s", ano);
+      if (nota[0]) { double v = atof(nota); if (v > 0 && v <= 10) c.nota = (int)(v * 10.0 + 0.5); }
       if (c.id) {
-        for (i = 0; i < n; i++) { unsigned long x; if (cineplex_id_partes(saida[i].imdb, &x, NULL, NULL) && x == c.id) break; }
-        if (i == n) { item_de(&c, &saida[n]); copiar(saida[n].origem, sizeof saida[n].origem, "Cineplex"); n++; }
+        for (i = 0; i < n; i++) if (out[i].id == c.id) break;
+        if (i == n) out[n++] = c;
       }
     }
     p = f;
   }
-  free(json);
+  return n;
+}
+
+// ------------------------------------------------------------ see all
+// catId "all" = the whole library, newest first (tvs_more.php, the call the site's own infinite scroll
+// makes); "c:<category>" = one category, page by page (tcategory.php).
+#define CX_PAGINA_ALL 24
+int cineplex_pagina(const char *catId, int pagina, CatItem *saida, int max, int *fim) {
+  char caminho[260], *corpo = NULL;
+  int pg = pagina < 1 ? 1 : pagina, n = 0, i, total = 0;
+  Cartao *c;
+  if (fim) *fim = 0;
+  if (!catId || !saida || max <= 0) return -1;
+  c = malloc(sizeof(Cartao) * 96);
+  if (!c) return -1;
+  if (!strcmp(catId, "all")) {
+    snprintf(caminho, sizeof caminho, "/tvs_more.php?offset=%d&limit=%d", (pg - 1) * CX_PAGINA_ALL, CX_PAGINA_ALL);
+    if (!pegar(caminho, &corpo, NULL)) { free(c); return -1; }
+    {
+      const char *a = strchr(corpo, '[');
+      n = a ? ler_lista_json(a + 1, c, max < 96 ? max : 96, 0) : 0;
+    }
+    if (fim) *fim = n < CX_PAGINA_ALL;
+  } else if (!strncmp(catId, "c:", 2)) {
+    snprintf(caminho, sizeof caminho, "/tcategory.php?category=%s&page=%d", catId + 2, pg);
+    if (!pegar(caminho, &corpo, NULL)) { free(c); return -1; }
+    total = total_paginas(corpo);
+    n = ler_cartoes(corpo, c, max < 96 ? max : 96);
+    if (fim) *fim = (total > 0 && pg >= total) || n == 0;
+  } else { free(c); return -1; }
+  for (i = 0; i < n; i++) { item_de(&c[i], &saida[i]); copiar(saida[i].origem, sizeof saida[i].origem, "Cineplex"); }
+  free(c); free(corpo);
+  return n;
+}
+
+// ------------------------------------------------------------- search
+int cineplex_buscar(const char *termo, CatItem *saida, int max) {
+  char caminho[400], esc[300], *json = NULL;
+  const char *arr;
+  size_t k = 0;
+  int n, i;
+  Cartao *c;
+  if (!termo || !*termo || !saida || max <= 0) return 0;
+  for (const unsigned char *u = (const unsigned char *)termo; *u && k + 4 < sizeof esc; u++) {
+    if (isalnum(*u) || *u == '-' || *u == '_' || *u == '.') esc[k++] = (char)*u;
+    else if (*u == ' ') esc[k++] = '+';
+    else k += (size_t)snprintf(esc + k, 4, "%%%02X", *u);
+  }
+  esc[k] = 0;
+  snprintf(caminho, sizeof caminho, "/search_ajax.php?q=%s&limit=30", esc);
+  if (!pegar(caminho, &json, NULL)) return 0;
+  c = malloc(sizeof(Cartao) * 64);
+  arr = strstr(json, "\"results\"");
+  arr = arr ? strchr(arr, '[') : strchr(json, '[');
+  n = (c && arr) ? ler_lista_json(arr + 1, c, max < 64 ? max : 64, 1) : 0;
+  for (i = 0; i < n; i++) { item_de(&c[i], &saida[i]); copiar(saida[i].origem, sizeof saida[i].origem, "Cineplex"); }
+  free(c); free(json);
   return n;
 }
 

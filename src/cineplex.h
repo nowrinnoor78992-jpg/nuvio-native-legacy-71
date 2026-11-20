@@ -13,7 +13,7 @@
 #include "catalogo.h"
 #include "streams.h"
 
-#define CX_FIL_MAX 6
+#define CX_FIL_MAX 11
 #define CX_POR_FIL 24
 #define CX_ITENS_MAX (CX_FIL_MAX * CX_POR_FIL)
 
@@ -30,7 +30,7 @@ int  cineplex_fileiras_copiar(CatItem *itens, int maxItens, CatFileira *fils, in
 int  cineplex_ficha(CatItem *item, CatEp *eps, int maxEps);
 int  cineplex_fontes_pedir(const char *alvo);
 int  cineplex_fontes_colher(const char *alvo, Stream **lista, int *n);
-// "Ver tudo": page `pagina` (1-based) of a row. catId = "all" (every category in turn) or "c:<category>".
+// "See all": page `pagina` (1-based) of a row. catId = "all" (the whole library, newest first) or "c:<category>".
 // BLOCKS (network). Returns the number of titles written to `saida` (0 .. max), or -1 on failure.
 // *fim = 1 when this was the last page.
 int  cineplex_pagina(const char *catId, int pagina, CatItem *saida, int max, int *fim);
