@@ -46,6 +46,7 @@ static const struct { const char *cod, *nome; } NOMES[] = {
   { "lv", "Letão" },      { "lt", "Lituano" },   { "ca", "Catalão" },
   { "eu", "Basco" },      { "gl", "Galego" },    { "is", "Islandês" },
   { "fa", "Persa" },      { "ms", "Malaio" },    { "tl", "Filipino" },
+  { "bn", "Bengali" },    { "ben", "Bengali" },  { "bng", "Bengali" },
 };
 #define NOMES_N ((int)(sizeof NOMES / sizeof *NOMES))
 
@@ -108,6 +109,7 @@ static const char *familia(const char *c, char *buf) {
     { "cat","ca" },{ "eus","eu" },{ "baq","eu" },{ "glg","gl" },{ "isl","is" },
     { "ice","is" },{ "fas","fa" },{ "per","fa" },{ "fil","tl" },{ "tgl","tl" },
     { "nob","no" },{ "nno","no" },{ "nb","no" },{ "nn","no" },{ "iw","he" },
+    { "ben","bn" },{ "bng","bn" },{ "bn-bd","bn" },{ "bn_bd","bn" },{ "bn-in","bn" },{ "bn_in","bn" },
     // Chines e espanhol regionais sem tracinho, e os codigos antigos do
     // OpenSubtitles ("pb" portugues do Brasil, "ea" espanhol latino, "ze"
     // chines bilingue).
@@ -495,6 +497,7 @@ static const struct { const char *radical, *cod; } NOME_IDIOMA[] = {
   { "slovenian", "slv" }, { "slovene", "slv" }, { "persian", "fas" }, { "farsi", "fas" },
   { "malay", "msa" }, { "filipino", "fil" }, { "tagalog", "fil" }, { "catalan", "cat" },
   { "estonian", "est" }, { "latvian", "lav" }, { "lithuanian", "lit" }, { "icelandic", "isl" },
+  { "bengali", "ben" }, { "bangla", "ben" }, { "\xe0\xa6\xac\xe0\xa6\xbe\xe0\xa6\x82\xe0\xa6\xb2\xe0\xa6\xbe", "ben" },
 };
 
 const char *ling_do_nome(const char *nome) {
