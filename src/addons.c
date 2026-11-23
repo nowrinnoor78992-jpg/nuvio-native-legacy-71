@@ -1231,17 +1231,10 @@ void addons_shot_legendas(const Legenda *v, int n) {
 // "Todas" nesta TV), a lista aceita qualquer idioma ate LEG_MAX. Com idiomas
 // escolhidos, o ingles continua como reserva para quem nao acha o proprio.
 static int gruposIdioma(const char *g[3]) {
-  const char *a = ling_legenda(), *b = ling_legenda2();
-  int n = 0;
-  // Empty preferences include the explicit local "All" choice. One
-  // unfiltered group must keep every language, rather than only English.
-  if (!a[0] && !b[0]) { g[0] = ""; return 1; }
-  if (a[0] && strcasecmp(a, "none")) g[n++] = a;
-  if (b[0] && strcasecmp(b, "none") && !(n && ling_casa(b, a))) g[n++] = b;
-  { int i, tem = 0;
-    for (i = 0; i < n; i++) if (ling_casa("en", g[i])) tem = 1;
-    if (!tem) g[n++] = "en"; }
-  return n;
+  // ONLY BENGALI AND ENGLISH (owner's rule): no other language is ever requested or kept, whatever the
+  // preference says. Bengali first; English is the reserve.
+  g[0] = "bn"; g[1] = "en";
+  return 2;
 }
 
 

@@ -299,14 +299,20 @@ static const char *emVigor(const char *local, const char *conta) {
   if (local[0] == '~') return origAtual;
   return local;
 }
-const char *ling_legenda(void)  { return emVigor(localLeg, contaLeg); }
+// ONLY BENGALI AND ENGLISH (owner's rule): a stored preference for any other language (Settings or
+// account) is ignored, so nothing but Bengali/English is ever picked automatically.
+static const char *soBnEn(const char *v) {
+  if (v[0] && strcasecmp(v, "none") && !ling_casa(v, "bn") && !ling_casa(v, "en")) return "";
+  return v;
+}
+const char *ling_legenda(void)  { return soBnEn(emVigor(localLeg, contaLeg)); }
 // A SECUNDARIA (F04): Ajustes desta TV agora tem a linha dela. Escolhida
 // aqui, vale a regra da principal (emVigor). Em "Da conta" fica o
 // comportamento de antes: a da conta, a nao ser que a PRINCIPAL tenha sido
 // escolhida nesta TV (ai a conta nao manda em nenhuma das duas).
 const char *ling_legenda2(void) {
-  if (localLeg2[0]) return emVigor(localLeg2, contaLeg2);
-  return localLeg[0] ? "" : contaLeg2;
+  if (localLeg2[0]) return soBnEn(emVigor(localLeg2, contaLeg2));
+  return soBnEn(localLeg[0] ? "" : contaLeg2);
 }
 const char *ling_audio(void)    { return emVigor(localAud, contaAud); }
 // O SEGUNDO IDIOMA DE AUDIO (secondary_preferred_audio_language do app

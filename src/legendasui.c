@@ -159,6 +159,15 @@ static void capturar(void) {
     nA = addons_legendas_copiar(add, LEG_MAX, NULL, NULL);
   nCand = legendasui_montar(emb, nE, add, nA, cand, LEGUI_MAX_CAND);
   free(add);
+  // ONLY BENGALI AND ENGLISH (owner's rule): a track whose language is known and is neither is not listed.
+  // A track with no language tag stays (it cannot be told apart).
+  { int k, w = 0;
+    for (k = 0; k < nCand; k++) {
+      if (cand[k].idioma[0] && !ling_casa(cand[k].idioma, "bn") && !ling_casa(cand[k].idioma, "en")) continue;
+      if (w != k) cand[w] = cand[k];
+      w++;
+    }
+    nCand = w; }
 }
 
 static void idPrimario(char out[24]) {

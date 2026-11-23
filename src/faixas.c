@@ -1041,6 +1041,14 @@ static void legendaAutomatica(Uint32 agora) {
     emb[i] = f ? f->idioma : "";
     tipos[i] = !f ? LING_LEG_COMUM : f->tipoLeg ? f->tipoLeg : f->letreiro ? LING_LEG_LETREIROS : LING_LEG_COMUM;
   }
+  // ONLY BENGALI AND ENGLISH (owner's rule): if the file itself turned on a track of another (known)
+  // language, switch it off; the Bengali/English pick below then runs as usual.
+  { int at = legendaAtiva();
+    if (at >= 0 && at < nEmb && emb[at][0] && !ling_casa(emb[at], "bn") && !ling_casa(emb[at], "en")) {
+      printf("[legenda] faixa '%s' fora de bn/en: desligada\n", emb[at]);
+      fflush(stdout);
+      escolherLegenda(-1);
+    } }
   fa = video_audio(video_audio_atual());
   audio = fa ? fa->idioma : "";
   // #383: A LEGENDA INTEIRA ESCOLHIDA A MAO NESTE TITULO vence o #287. A faixa
@@ -1086,6 +1094,27 @@ static void legendaAutomatica(Uint32 agora) {
       return;
     }
   }
+  // BENGALI FIRST (this build): when a Bengali track exists (embedded or from an addon) it is turned
+  // on by itself; when there is none, the normal preference (English by default) applies as before.
+  // Not applied when the person chose "none", nor when THIS title has a hand-picked track (handled above).
+  r = -3;   // not decided yet
+  if (origem != LEGMEM_DE_TITULO && strcasecmp(pref, "none") && !ling_casa("bn", pref[0] ? pref : "xx")) {
+    int rb = ling_legenda_auto_tipo("bn", audio, forcadaAuto,
+                                    emb, tipos, nEmb, embFechado, add, nAdd, addFechado);
+    if (rb == LING_AUTO_ESPERA) return;                 // still looking for Bengali: English waits for the lists to close
+    if (rb >= 0) {
+      r = rb; pref = "bn";
+      soForcada = forcadaAuto && audio[0] && ling_casa(audio, "bn");
+    } else if (forcadaAuto && audio[0] && ling_casa(audio, "bn")) {
+      // The audio is already in Bengali and the file has no forced Bengali track: no subtitles needed.
+      legAuto = 0; pilBusca = 0;
+      printf("[legenda] automatica: audio em bengali, sem forcada: nenhuma\n");
+      fflush(stdout);
+      return;
+    }
+    if (r == -3 && !pref[0]) pref = "en";               // no preference at all: English is the default
+  }
+  if (r == -3)
   r = ling_legenda_auto_tipo(pref, audio, forcadaAuto,
                              emb, tipos, nEmb, embFechado, add, nAdd, addFechado);
   if (r == LING_AUTO_ESPERA) {
