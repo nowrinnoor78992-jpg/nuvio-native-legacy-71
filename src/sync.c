@@ -1511,6 +1511,7 @@ void sync_iniciar(void) {
   // com ou sem login — elas nunca mais seriam lidas nem enviadas.
   addonsEsquecer();
   if (!sessao_logada()) return;
+  if (!nuvem_pronta()) { desc_sessao_preparada(); return; }   // guest mode: nothing to sync with
   // Cached sources are private to this session and do not touch the worker's
   // staging buffers. Restore them even while an old sync drains or backs off.
   addonsRestaurar();
@@ -1551,6 +1552,7 @@ void sync_iniciar(void) {
 // com o decodificador, e um engasgo de imagem custa mais que 5 minutos de
 // atraso no progresso.
 int sync_periodico(unsigned agoraMs) {
+  if (!nuvem_pronta()) return 0;   // guest mode: no account server
   if (!sessao_logada() || fioVivo) return 0;
   if (nuvem_freio_ativo()) return 0;
   // Sem nenhum ciclo bem-sucedido ainda, quem manda e quem chamou sync_iniciar

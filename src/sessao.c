@@ -819,6 +819,9 @@ SesEstado   sessao_estado(void)   { return estado; }
 // causa de um erro que nao tocou na sessao dela.
 int sessao_logada(void) {
   int r;
+  // GUEST MODE (owner's lean build): a package built WITHOUT the account server (no URL/key) has no
+  // login to offer, so it runs as a local session: no login page, no profile chooser, no sync.
+  if (!nuvem_pronta()) return 1;
   pthread_mutex_lock(&tokTrava);
   r = acesso[0] != 0 && !anonima;
   pthread_mutex_unlock(&tokTrava);
