@@ -1,0 +1,2 @@
+Cinemeta	https://v3-cinemeta.strem.io/manifest.json
+OpenSubtitles	https://opensubtitles-v3.strem.io/manifest.json
